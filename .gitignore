@@ -1,3 +1,10 @@
+# ignore maps data, images, catalog, etc.
+halos.pksc
+*.fits
+*.png
+
+##### Python ignores:
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
