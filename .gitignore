@@ -2,6 +2,7 @@
 halos.pksc
 *.fits
 *.png
+halomaps.*/*
 
 ##### Python ignores:
 

@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import healpy as hp
-from cosmology import *
+from common import *
 
 rho_m_0 = 2.775e11*omegam*h**2 # Msun/Mpc^3
 
@@ -52,7 +52,7 @@ for bin_num in range(len(chi_bins)-1) :
   # for each halo in chi-bin:
   theta, phi  = hp.vec2ang(np.column_stack((x_red, y_red, z_red))) # in radians
   p_theta = M * ( np.cos(theta)*np.cos(phi)*vx + np.cos(theta)*np.sin(phi)*vy - np.sin(theta)*vz )
-  p_phi = M * ( -np.sin(theta)*vx + np.cos(theta)*vy )
+  p_phi = M * ( -np.sin(phi)*vx + np.cos(phi)*vy )
   # Map of transverse momentum 
   p_theta_map = np.zeros((hp.nside2npix(NSIDE)), dtype=np.float)
   np.add.at(p_theta_map, pix, p_theta)
