@@ -3,6 +3,7 @@ halos.pksc
 *.fits
 *.png
 halomaps.*/*
+numbers.npz
 
 ##### Python ignores:
 

@@ -7,6 +7,7 @@ import pywigxjpf as pywig
 from joblib import Parallel, delayed
 import sys, argparse, multiprocessing
 from common import *
+from scipy.signal import savgol_filter
 
 print("  Creating pywig tables...")
 NSIDE_MAX = 4096
@@ -18,6 +19,7 @@ parser = argparse.ArgumentParser(description='Scripts to perform reconstruction 
 
 parser.add_argument('-vc', '--velocity_comparison', help='Compare velocity maps generated using different methods.', action='store_true')
 parser.add_argument('-kc', '--ksz_comparison', help='Compare halo and websky maps.', action='store_true')
+parser.add_argument('-tc', '--tau_comparison', help='Compare different tau maps.', action='store_true')
 parser.add_argument('-kr', '--ksz_reconstruction', help='Perform kSZ reconstruction.', action='store_true')
 
 if not len(sys.argv) > 1 :
@@ -102,6 +104,50 @@ if args.ksz_comparison :
 
 
 ####################
+## tau comparison ##
+####################
+
+def psplot(ps, label=None, norm=False) :
+  ls = np.arange(len(ps))[1:]
+  if norm :
+    mean_ps = np.mean(ps[1:])
+    plt.loglog(ls, ps[1:]/mean_ps, label=label)
+  else :
+    plt.loglog(ls, ps[1:], label=label)
+
+if args.tau_comparison :
+  NSIDE_WORKING = NSIDE
+  OUTPUT_DIR = MAPS_OUTPUT_DIR+"tau_comparison/"
+  mkdir_p(OUTPUT_DIR)
+
+  # tau_map = getMap("tau", NSIDE=NSIDE_WORKING)
+  # tau_unc_map = getMap("tau_uncertain", NSIDE=NSIDE_WORKING)
+  # N_map = getMap("N", NSIDE=NSIDE_WORKING)
+  # N_unc_map = getMap("N_uncertain", NSIDE=NSIDE_WORKING)
+
+  # tau_ps = hp.anafast(tau_map)
+  # tau_unc_ps = hp.anafast(tau_unc_map)
+  # N_ps = hp.anafast(N_map)
+  # N_unc_ps = hp.anafast(N_unc_map)
+
+  psplot(tau_ps, label="tau", norm=True)
+  psplot(tau_unc_ps, label="tau + unc.", norm=True)
+  psplot(N_ps, label="N", norm=True)
+  psplot(N_unc_ps, label="N + unc.", norm=True)
+
+  psplot(np.concatenate(([0], savgol_filter(tau_ps[1:], 51, 3))), label="SG tau", norm=True)
+  psplot(np.concatenate(([0], savgol_filter(tau_unc_ps[1:], 51, 3))), label="SG tau + unc.", norm=True)
+  psplot(np.concatenate(([0], savgol_filter(N_ps[1:], 51, 3))), label="SG N", norm=True)
+  psplot(np.concatenate(([0], savgol_filter(N_unc_ps[1:], 51, 3))), label="SG N + unc.", norm=True)
+  
+  plt.legend()
+  plt.savefig(OUTPUT_DIR+"tau_ps.png")
+  plt.close()
+
+
+
+
+####################
 ## Reconstruction ##
 ####################
 
@@ -130,25 +176,27 @@ if args.ksz_reconstruction :
   OUTPUT_DIR = MAPS_OUTPUT_DIR+"ksz_reconstruction/"
   mkdir_p(OUTPUT_DIR)
 
-  tau_map = getMap("tau", NSIDE=NSIDE_WORKING)
-  rho_map = getMap("N", NSIDE=NSIDE_WORKING)
+  tau_map = getMap("N_uncertain", NSIDE=NSIDE_WORKING) #
+  rho_map = getMap("N_uncertain", NSIDE=NSIDE_WORKING) # _uncertain
+  
   vrad_map = getMap("vrad", NSIDE=NSIDE_WORKING) # Directly averaged velocity
-
   ksz_map = getMap("../ksz", NSIDE=NSIDE_WORKING) # websky kSZ
   # ksz_map = getMap("ksz", NSIDE=NSIDE_WORKING) # kSZ for this bin only
   # ksz_map = getMap("../ksz_halos", NSIDE=NSIDE_WORKING) # kSZ from halo catalogue only
 
   CMB_alms = hp.fitsfunc.read_alm('lensed_alm.fits').astype(np.complex)
   CMB_map = hp.alm2map(CMB_alms, NSIDE_WORKING)
-
-  Obs_T_map = ksz_map + CMB_map
+  patchy_ksz_map = getMap("../ksz_patchy", NSIDE=NSIDE_WORKING) # websky patchy kSZ
+  Obs_T_map = ksz_map + CMB_map + patchy_ksz_map
 
   # CMB power spectra
   CMB_PS = hp.anafast(CMB_map)
   ksz_PS = hp.anafast(ksz_map)
+  patchy_ksz_PS = hp.anafast(patchy_ksz_map)
   Obs_T_PS = hp.anafast(Obs_T_map)
   psplot(CMB_PS, label="CMB")
   psplot(ksz_PS, label="kSZ")
+  psplot(patchy_ksz_PS, label="Patchy kSZ")
   psplot(Obs_T_PS, label="Total")
   plt.legend()
   plt.savefig(OUTPUT_DIR+"CMB_PS.png")
@@ -158,6 +206,7 @@ if args.ksz_reconstruction :
   # try reconstructing...
   print("Generating power spectra.")
   ClTT = hp.anafast(Obs_T_map)
+  ClTT_filtered = np.concatenate(([1.0], savgol_filter(ClTT[1:], 51, 3)))
   Cldd = hp.anafast(rho_map)
   Cltd = hp.anafast(rho_map, map2=tau_map)
   ls = np.arange(ClTT.size)
@@ -165,10 +214,9 @@ if args.ksz_reconstruction :
   print("Generating alms.")
   dTlm = hp.map2alm(Obs_T_map)
   dlm = hp.map2alm(rho_map)
-  CldTdT = ClTT
 
   print("Generating rescaled alms.")
-  dTlm_resc = hp.almxfl(dTlm, 1.0/CldTdT)
+  dTlm_resc = hp.almxfl(dTlm, 1.0/ClTT_filtered)
   dT_resc = hp.alm2map(dTlm_resc, NSIDE)
   dlm_resc = hp.almxfl(dlm, Cltd/Cldd)
   d_resc = hp.alm2map(dlm_resc, NSIDE)
@@ -177,8 +225,8 @@ if args.ksz_reconstruction :
   # Compute noise (expensive, need to optimize?)
   # print("Computing noise.")
   # ncores = multiprocessing.cpu_count()
-  # Ninv = [ getNinv(l, ls, Cltd, CldTdT, Cldd) for l in ls ]
-  # Ninv = Parallel(n_jobs=ncores)(delayed(getNinv)(l, ls, Cltd, CldTdT, Cldd) for l in ls)
+  # Ninv = [ getNinv(l, ls, Cltd, ClTT, Cldd) for l in ls ]
+  # Ninv = Parallel(n_jobs=ncores)(delayed(getNinv)(l, ls, Cltd, ClTT, Cldd) for l in ls)
   # N = 1.0/np.array(Ninv)
   # N = np.zeros_like(ls, dtype=np.int)
   # N[:100] = 1.0

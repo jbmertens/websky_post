@@ -47,17 +47,19 @@ NSIDE = 4096
 NPIX = 12*NSIDE**2
 OMEGA_PIX = 4.0*np.pi/NPIX
 
-Z_MIN = 0.4
-Z_MAX = 0.5
+Z_MIN = 0.40
+Z_MAX = 0.50
 
 CHI_MIN = chiofz(Z_MIN)
 CHI_MAX = chiofz(Z_MAX)
+
+M_CUT_PERCENTILE = 0.0 # 99.999 is top 0.001% of halos
 
 #################
 ## Working dir ##
 #################
 
-MAPS_OUTPUT_DIR = "halomaps.z"+("%.2f" % Z_MIN)+"-z"+("%.2f" % Z_MAX)+"/"
+MAPS_OUTPUT_DIR = "halomaps.z"+("%.2f" % Z_MIN)+"-z"+("%.2f" % Z_MAX)+".mp"+("%.4f" % M_CUT_PERCENTILE)+"_NSIDE-"+str(NSIDE)+"/"
 
 def mkdir_p(path):
   try:
@@ -86,20 +88,21 @@ def getFits(filepath, reload=False) :
     LOADED_FITS[filepath] = data
   return data
 
+def nsideof(_map) :
+  return int(round(np.sqrt(len(_map)//12)))
+
 def getMap(name, NSIDE=None) :
   _map = getFits(MAPS_OUTPUT_DIR+name+".fits")
 
-  if NSIDE is not None :
+  if (NSIDE is not None) and (NSIDE != nsideof(_map)) :
     return hp.ud_grade(_map, NSIDE)
   else :
     return _map
 
-def nsideof(_map) :
-  return int(round(np.sqrt(len(_map)//12)))
-
 def psplot(ps, label=None, norm=False) :
   ls = np.arange(len(ps))[1:]
   if norm :
-    plt.loglog(ls, ls*(ls+1.0)*ps[1:]/ps[1], label=label)
+    mean_ps = np.mean(ps[1:])
+    plt.loglog(ls, ls*(ls+1.0)*ps[1:]/mean_ps, label=label)
   else :
     plt.loglog(ls, ls*(ls+1.0)*ps[1:], label=label)
