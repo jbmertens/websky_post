@@ -176,7 +176,7 @@ if args.ksz_reconstruction :
   OUTPUT_DIR = MAPS_OUTPUT_DIR+"ksz_reconstruction/"
   mkdir_p(OUTPUT_DIR)
 
-  tau_map = getMap("N_uncertain", NSIDE=NSIDE_WORKING) #
+  tau_map = -1.0*getMap("N_uncertain", NSIDE=NSIDE_WORKING) #
   rho_map = getMap("N_uncertain", NSIDE=NSIDE_WORKING) # _uncertain
   
   vrad_map = getMap("vrad", NSIDE=NSIDE_WORKING) # Directly averaged velocity
@@ -184,31 +184,37 @@ if args.ksz_reconstruction :
   # ksz_map = getMap("ksz", NSIDE=NSIDE_WORKING) # kSZ for this bin only
   # ksz_map = getMap("../ksz_halos", NSIDE=NSIDE_WORKING) # kSZ from halo catalogue only
 
-  CMB_alms = hp.fitsfunc.read_alm('lensed_alm.fits').astype(np.complex)
-  CMB_map = hp.alm2map(CMB_alms, NSIDE_WORKING)
+  try:
+    _CMB_foo = CMB_map[0]
+  except Exception as e:
+    CMB_alms = hp.fitsfunc.read_alm('lensed_alm.fits').astype(np.complex)
+    CMB_map = hp.alm2map(CMB_alms, NSIDE_WORKING)
   patchy_ksz_map = getMap("../ksz_patchy", NSIDE=NSIDE_WORKING) # websky patchy kSZ
-  Obs_T_map = ksz_map + CMB_map + patchy_ksz_map
+  tsz_map = T_CMB*y_to_tSZ*getMap("../tsz", NSIDE=NSIDE_WORKING) # websky tSZ
+  Obs_T_map = ksz_map + CMB_map + patchy_ksz_map + tsz_map
 
   # CMB power spectra
-  CMB_PS = hp.anafast(CMB_map)
-  ksz_PS = hp.anafast(ksz_map)
-  patchy_ksz_PS = hp.anafast(patchy_ksz_map)
-  Obs_T_PS = hp.anafast(Obs_T_map)
-  psplot(CMB_PS, label="CMB")
-  psplot(ksz_PS, label="kSZ")
-  psplot(patchy_ksz_PS, label="Patchy kSZ")
-  psplot(Obs_T_PS, label="Total")
-  plt.legend()
-  plt.savefig(OUTPUT_DIR+"CMB_PS.png")
-  plt.close()
+  # CMB_PS = hp.anafast(CMB_map)
+  # ksz_PS = hp.anafast(ksz_map)
+  # patchy_ksz_PS = hp.anafast(patchy_ksz_map)
+  # tsz_PS = hp.anafast(tsz_map)
+  # Obs_T_PS = hp.anafast(Obs_T_map)
+  # psplot(CMB_PS, label="CMB")
+  # psplot(ksz_PS, label="kSZ")
+  # psplot(patchy_ksz_PS, label="Patchy kSZ")
+  # psplot(tsz_PS, label="tSZ")
+  # psplot(Obs_T_PS, label="Total")
+  # plt.legend()
+  # plt.savefig(OUTPUT_DIR+"CMB_PS.png")
+  # plt.close()
 
 
   # try reconstructing...
   print("Generating power spectra.")
   ClTT = hp.anafast(Obs_T_map)
   ClTT_filtered = np.concatenate(([1.0], savgol_filter(ClTT[1:], 51, 3)))
-  Cldd = hp.anafast(rho_map)
-  Cltd = hp.anafast(rho_map, map2=tau_map)
+  # Cldd = hp.anafast(rho_map)
+  # Cltd = hp.anafast(rho_map, map2=tau_map)
   ls = np.arange(ClTT.size)
 
   print("Generating alms.")
@@ -216,10 +222,10 @@ if args.ksz_reconstruction :
   dlm = hp.map2alm(rho_map)
 
   print("Generating rescaled alms.")
-  dTlm_resc = hp.almxfl(dTlm, 1.0/ClTT_filtered)
+  dTlm_resc = hp.almxfl(dTlm, 1.0/ClTT)
   dT_resc = hp.alm2map(dTlm_resc, NSIDE)
-  dlm_resc = hp.almxfl(dlm, Cltd/Cldd)
-  d_resc = hp.alm2map(dlm_resc, NSIDE)
+  dlm = -1.0*dlm # dlm_resc = hp.almxfl(dlm, 1.0) #Cltd/Cldd
+  d_resc = hp.alm2map(dlm, NSIDE)
 
 
   # Compute noise (expensive, need to optimize?)
@@ -233,10 +239,7 @@ if args.ksz_reconstruction :
 
   unnorm_veff_reconstlm = hp.map2alm(dT_resc*d_resc)
   unnorm_veff_reconst_ps = hp.alm2cl(unnorm_veff_reconstlm)
-
-  N = np.sqrt( hp.anafast(vrad_map) / unnorm_veff_reconst_ps ) # Fake noise just to make the reconstructed spectrum agree.
-  veff_reconstlm = hp.almxfl(unnorm_veff_reconstlm, N)
-  veff_reconst = hp.alm2map(veff_reconstlm, NSIDE)
+  unnorm_veff_reconst = hp.alm2map(unnorm_veff_reconstlm, NSIDE)
 
   dT_resc_ps = hp.anafast(dT_resc)
   d_resc_ps = hp.anafast(d_resc)
@@ -264,7 +267,7 @@ if args.ksz_reconstruction :
   plt.close()
 
   # Correlation between velocity maps
-  plt.semilogx( hp.anafast(vrad_map, veff_reconst)/np.sqrt(hp.anafast(vrad_map)*hp.anafast(veff_reconst)), label="vrad_map")
+  plt.semilogx( hp.anafast(vrad_map, unnorm_veff_reconst)/np.sqrt(vrad_PS*unnorm_veff_reconst_ps), label="vrad_map")
   plt.legend()
   plt.savefig(OUTPUT_DIR+"corr_coeff.png")
   plt.close()

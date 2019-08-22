@@ -42,6 +42,8 @@ mu = (1.0-YHe)/mH + YHe/mHe # 1/Msun
 fb = omegab/omegam
 ksz_prefac = -sigma_T * fb*mu # * T_CMB
 
+T_CMB = 2.725e6 # uK
+y_to_tSZ = 0.187 # g(v) for 217 gHZ from table 1 in https://arxiv.org/pdf/1502.01596.pdf
 
 NSIDE = 4096
 NPIX = 12*NSIDE**2
