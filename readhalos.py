@@ -16,15 +16,17 @@ except Exception as e :
   catalog=np.fromfile(f,count=N*10,dtype=np.float32)
   catalog=np.reshape(catalog,(N,10))
 
-print("Reducing catalogue...")
-x  = catalog[:,0];  y = catalog[:,1];  z = catalog[:,2] # Mpc (comoving)
+
+print("Computing catalogue properties...")
+x = catalog[:,0];  y = catalog[:,1];  z = catalog[:,2] # Mpc (comoving)
 chi = np.sqrt(x**2+y**2+z**2)    # Mpc
 vx = catalog[:,3]; vy = catalog[:,4]; vz = catalog[:,5] # km/sec
 vrad = (x*vx + y*vy + z*vz) / chi # km/sec
 redshift = zofchi(chi)
 R = catalog[:,6] # Mpc
 M = 4*np.pi/3.*rho_m_0*R**3
-print("...done. Num. halos remaining is", len(catalog), ".")
+print("...done. Num. halos in catalog is", len(catalog), ".")
+
 
 print("Computing catalogue with systematics & uncertainties...")
 sigma_z = 0.05*np.random.normal(size=len(redshift))*redshift # LSST "gold" sample
@@ -40,7 +42,7 @@ M_unc = M_with_unc[ (chi_with_unc>CHI_MIN) & (chi_with_unc<CHI_MAX) & (M_with_un
 print("...done. Num. halos remaining is", len(uncertain_catalog), ".")
 
 
-print("Computing reduced catalogue parameters...")
+print("Computing \"true\" reduced (to within bin) catalogue properties...")
 M_CUT = np.percentile(M, M_CUT_PERCENTILE)
 reduced_catalog = catalog[ (chi>CHI_MIN) & (chi<CHI_MAX) & (M>M_CUT) ]
 x  = reduced_catalog[:,0];  y = reduced_catalog[:,1];  z = reduced_catalog[:,2] # Mpc (comoving)
@@ -52,14 +54,19 @@ chi      = np.sqrt(x**2+y**2+z**2)    # Mpc
 vrad     = (x*vx + y*vy + z*vz) / chi # km/sec
 redshift = zofchi(chi)
 dA       = chi / (1.0 + redshift)     # Mpc (angular diameter distance)
-pix = hp.vec2pix(NSIDE, x, y, z)
+pix      = hp.vec2pix(NSIDE, x, y, z)
+theta, phi = hp.pix2ang(NSIDE, pix)
+v_theta = np.cos(theta)*np.cos(phi)*vx + np.cos(theta)*np.sin(phi)*vy - np.sin(theta)*vz
+v_phi = -np.sin(phi)*vx + np.cos(phi)*vy
 
-print("Computing uncertain catalogue parameters...")
+
+print("Computing uncertain catalogue properties...")
 x_unc  = uncertain_catalog[:,0]; y_unc = uncertain_catalog[:,1];  z_unc = uncertain_catalog[:,2] # Mpc (comoving)
 pix_unc = hp.vec2pix(NSIDE, x_unc, y_unc, z_unc)
 dA_unc = chi_unc / (1.0 + redshift_unc)     # Mpc (angular diameter distance)
+print("Done.")
 
-print("Done. Plotting histograms.")
+print("Plotting histograms...")
 plt.hist(redshift, bins=100)
 plt.savefig(MAPS_OUTPUT_DIR+'redshift_histogram.png')
 plt.close()
@@ -110,8 +117,11 @@ def mapof(name, weights, fill_weights=None, pix=pix) :
 
 mapof("N", (0.0*M+1.0).astype(np.int) ) # number counts map
 mapof("N_uncertain", (0.0*M_unc+1.0).astype(np.int), pix=pix_unc ) # number counts map
+mapof("M", M) # mass map
 
 mapof("vrad", vrad) # "true" average velocity
+mapof("p_theta", M*v_theta) # "true" momentum
+mapof("p_phi", M*v_phi) # "true" momentum
 
 mapof("prad", M*vrad/dA/dA/OMEGA_PIX ) # radial momentum
 mapof("ksz", ksz_prefac*M*vrad/dA/dA/OMEGA_PIX ) # kSZ temperature
@@ -120,11 +130,3 @@ mapof("tau", ksz_prefac*M/dA/dA/OMEGA_PIX) # Optical depth (~ kSZ without veloci
 mapof("tau_uncertain", ksz_prefac*M_unc/dA_unc/dA_unc/OMEGA_PIX, pix=pix_unc ) # Optical depth (~ kSZ without velocity)
 
 
-# Additional possibly useful maps
-# mapof("M", M) # Mass map
-# mapof("rho", M / (1.0+redshift)**3 / dA**2 / OMEGA_PIX/rho_m_0 ) # proper-distance-weighted density integral
-# mapof("rho_conf", M / (1.0+redshift)**4 / dA**2 / OMEGA_PIX/rho_m_0 ) # conformal-distance-weighted density integral
-# mapof("vrad_M", M*vrad) # Mass-weighted velocity
-# mapof("vrad_fill", vrad, 1.0) # averaged velocity
-# mapof("vrad_fill_M", vrad, M) # averaged velocity
-# mapof("vrad_conf", vrad / (1.0+redshift)) # conformal-distance-weighted average velocity
